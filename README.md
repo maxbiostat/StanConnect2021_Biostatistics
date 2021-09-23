@@ -18,9 +18,9 @@ Teddy Groves (Postdoctoral researcher), Technical University of Denmark.
 
 Nicholas Cowie (PhD student), Technical University of Denmark.
 
-- ["Leveraging external data in Bayesian adaptive platform designs using Stan"](https://github.com/maxbiostat/StanConnect2021_Biostatistics/blob/main/talk_5/alejandra.md).
+- ["Hidden Markov models for disease progression data"](https://github.com/maxbiostat/StanConnect2021_Biostatistics/blob/main/talk_5/martin.md).
 
-Alejandra Avalos-Pacheco (Postdoctoral researcher), Harvard Medical School. 
+Martin Modrák is a Researcher at the Czech Academy of Sciences. 
 
 - ["A Bayesian Approach to Representing Variability in Space in Cardiac Action Potential Properties"](https://github.com/maxbiostat/StanConnect2021_Biostatistics/blob/main/talk_6/alejandro.md).
 
