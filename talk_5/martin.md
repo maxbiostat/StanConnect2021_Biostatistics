@@ -1,4 +1,4 @@
-Hidden Markov models for disease progression data.
+## Hidden Markov models for disease progression data
 
 When detailed information on disease progression is available, Hidden Markov models (HMMs) are an interesting alternative to the commonly used proportional hazards survival/multistate models.
 By enforcing additional structure on the transition matrix, HMMs can usefully model more disease states than a proportional hazards model on the same dataset at the cost of introducing additional assumptions.
