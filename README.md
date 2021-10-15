@@ -10,7 +10,7 @@ Repository for the Biomedical Statistics edition of StanConnect2021.
 
 Ethan Alt (PhD student), North Carolina University (Chapel Hill).
 
-- ["Summarising enzyme information from online databases using Stan and Arviz"](https://github.com/maxbiostat/StanConnect2021_Biostatistics/blob/main/talk_3/teddy.md).
+- ["Summarising enzyme information from online databases using Stan and Arviz"](https://github.com/maxbiostat/StanConnect2021_Biostatistics/blob/main/talk_3/teddy.md). [[Repo]](https://github.com/biosustain/brenda_km).
 
 Teddy Groves (Postdoctoral researcher), Technical University of Denmark.
 
