@@ -1,0 +1,20 @@
+.remark-slide .remark-slide-content.title-slide {
+  background-image: url("elixir-first-slide-background.png");
+  background-size: 100%;
+  background-position-y: top;
+}
+
+.remark-slide-content {
+  background-image: url("elixir-footer.png");
+  background-size: 100%;
+  background-position-y: 570px;
+}
+
+.title-slide h1 {
+  margin-top:3em;
+}
+
+.remark-slide-number {
+    top: 12px;
+}
+

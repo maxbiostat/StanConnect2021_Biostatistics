@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Hidden Markov Models</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Martin Modrák - Institute of Microbiology of the Czech Academy of Sciences" />
+    <script src="libs/header-attrs-2.11/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/hygge.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/middlebury-fonts.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/ninjutsu.css" rel="stylesheet" />
+    <link rel="stylesheet" href="overview.css" type="text/css" />
+    <link rel="stylesheet" href="elixir.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Hidden Markov Models
+## as an alternative to Cox proportional hazards models of disease progression
+### Martin Modrák - Institute of Microbiology of the Czech Academy of Sciences
+### 2021/10/19 (updated: 2021-10-18)
+
+---
+
+
+
+
+# Disease progression models
+
+--
+
+![](overview_figs/survival.png)
+
+--
+
+![](overview_figs/competing_risks.png)
+
+---
+
+# Disease progression models III
+
+![](overview_figs/covid_simple_full.png)
+
+Covid-19 Diseaese progression + treatments, Modrák et al. 2021, https://doi.org/10.1371/journal.pone.0245103
+
+
+---
+
+# Disease progression models IV
+
+Mayo Clinic Study of Aging (MCSA) - dementia progression. 
+As analyzed by Williams et al. 2018, https://doi.org/10.1080/01621459.2019.1594831
+
+
+![](overview_figs/dementia_no_death.png)
+
+
+---
+
+# Disease progression models IV
+
+![](overview_figs/dementia_full.png)
+
+
+---
+
+# How to fit progression models?
+
+--
+
+- Cox proportional hazards
+
+--
+
+- Accelerated failure time
+
+--
+
+- (Hidden) Markov Models
+
+???
+
+Will just briefly mention accelerated failure time
+
+---
+
+# What Cox PH cannot (easily) do
+
+- Impose structure on states
+
+--
+
+`\(P(X_{t} = \mathtt{Ventilated} | X_{t - 1} = \mathtt{Oxygen}) &gt; \\ &gt; P(X_{t} = \mathtt{Ventilated} | X_{t - 1} = \mathtt{AA})\)`
+
+--
+
+- No structure `\(\rightarrow\)` not many transitions
+
+--
+
+- Missing/Partially observed states
+
+???
+
+Not an expert happy to be corrected
+
+Extrapolation not important and hard anyway
+
+Dementia diagnosed only at doctor visit -&gt; implied event "Visited doctor and got dementia"
+
+---
+
+# Markov Models
+
+Markov property:
+
+`\(P(X_t = k | X_{t-1}, ..., X_0) = P(X_t = k | X_{t-1})\)`
+
+--
+
+I.e. we need:
+
+- A distribution of initial states `\(P(X_0)\)`
+
+--
+
+- Transition matrix `\(A\)`
+
+---
+
+# Markov Models - Observations
+
+- The baseline risk is constant.
+
+--
+
+- Geometric distribution of sojourn times `\(^{(*)}\)`.
+
+--
+
+**Extension:** Transition matrix `\(A_t\)` can differ in time/between patients   
+--
+(i.e. as a function of covariates)
+
+---
+
+# Hidden Markov Models
+
+- `\(X_t\)` not observed directly
+
+--
+
+- An arbitrary distribution `\(P(Y_t | X_t, \theta)\)` can be used.
+
+--
+
+- **Forward algorithm**: Exact likelihood `\(P(Y_t, ... Y_1 | \theta)\)` can be computed efficiently
+  
+--
+
+  - Transition matrices can vary
+
+--
+
+  - Missing observations? No problem!
+
+--
+
+- Cannot have missing predictors
+
+---
+
+# Varying transition matrices
+
+--
+
+- `\(K\)` categorical regressions
+
+--
+
+- `\(K\)` ordinal regressions
+
+--
+
+- Rate matrix
+
+---
+
+# Rate matrix
+
+Why do we observe transitions like `\(\mathtt{Ambient Air} \rightarrow \mathtt{Ventilated}\)`?
+
+--
+
+Two transitions in one day?
+
+--
+
+![](overview_figs/covid_simple_full.png)
+
+
+---
+
+# Rate matrix II
+
+![](overview_figs/covid_simple.png)
+
+`\(\frac{dP(X_t = \mathtt{AA})}{dt} = R_{\mathtt{Oxygen \rightarrow AA}} P(X_t = \mathtt{Oxygen}) - \\ - P(X_t = \mathtt{AA}) (R_{\mathtt{AA \rightarrow Oxygen}} + R_{\mathtt{AA \rightarrow Discharged}})\)`
+
+
+---
+
+# Rate Matrix III
+
+- `\(i \neq j\)` `\(R_{i,j}\)` is the rate of transition from `\(i\)` to `\(j\)`
+
+--
+
+- `\(R_{i,i} = -\sum_{j \neq i} R_{i,j}\)`. 
+
+--
+
+- `\(R\)` sparse
+
+--
+
+This forms an ODE:
+
+`\(\frac{dp(t)}{dt} = Rp\)`
+
+--
+
+Given  `\(p(0)\)`, we have:
+
+`\(p(t) = \exp(tR)p(0)\)`
+
+---
+
+# Rate Matrix IV
+
+`\(p(t) = \exp(tR)p(0)\)`
+
+--
+
+We now have `\(A = \exp(R)\)` so that `\(p(t + 1) = Ap(t)\)`
+
+--
+
+- `\(A\)` is _not_ sparse
+
+--
+
+- Predictors on `\(\log(R_{ij})\)`
+
+--
+
+- Still discrete time for predictors
+
+--
+
+- Matrix `\(\exp\)` _very_ expensive
+
+---
+
+# Rates allow complex models
+
+.smaller[
+![](overview_figs/dementia_full.png)
+]
+
+--
+
+- 18 transitions, 13 rates
+
+???
+Low am: 6 + 4 + 2
+High am: 3 + 2 + 1
+-&gt; 18 transitions
+
+6 + 2 + 3 + 2 = 13 rates
+
+---
+
+# Rates allow complex models II
+
+![](overview_figs/covid_complex.png)
+
+--
+
+- 42 transitions, 13 rates
+
+
+---
+
+# Is it useful?
+
+Hopefully, but I am not certain.
+
+--
+
+![](overview_figs/covid_retro_hcq.png)
+
+--
+
+Additional assumptions `\(\leftrightarrow\)` richer models
+
+---
+
+# Where is the code?
+
+Using `brms`
+
+--
+
+- https://discourse.mc-stan.org/t/fitting-hmms-with-time-varying-transition-matrices-using-brms-a-prototype/19645
+
+- https://github.com/cas-bioinf/covid19retrospective/  (`manuscript/hmm.Rmd`)
+
+--
+
+I need a push to develop this into something more broadly useful.
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

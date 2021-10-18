@@ -1,0 +1,12 @@
+img {
+  max-height: 484px;
+  max-width: 100%;
+}
+
+.remark-slide-content {
+  font-size:25px;
+}
+
+.smaller img {
+ max-height: 350px;
+}
