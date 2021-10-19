@@ -1,0 +1,585 @@
+---
+title: "A Hierarchical Model Implementation in Stan of the Mitchell-Schaefer Cardiac Potential Model, where one of its parameters is simulated on a two-dimensional domain using a latent Gaussian process as a prior"
+author: "Alejandro Nieto Ramos"
+date: "October 19, 2021"
+output: html_notebook
+header-includes:
+- \usepackage{amsmath}
+- \usepackage{amssymb}
+- \usepackage{amsthm}
+- \usepackage{bm}
+---
+
+\section{Introduction}
+
+\subsection{The Mitchell-Schaefer model}\label{MS}
+
+The Mitchell-Schaeffer (MS) model~\cite{Mitchell2003} is a phenomenological model that describes the dynamics of the cardiac membrane. It contains two variables and 5 parameters. 
+
+\begin{align*}
+\frac{du(t)}{dt}&= I_{in}+I_{out}+I_{stim},\\
+\frac{dh(t)}{dt}&= \left \{ 
+			\begin{array}{rl}
+  				\frac{1-h}{\tau_{open}}, & u < u_{gate}\\
+				\frac{-h}{\tau_{close}}, & u > u_{gate},\\
+ 			\end{array} \right.	
+\end{align*}
+where
+\begin{align*}
+I_{in}&= h \frac{u^2(1-u)}{ \tau_{in} }\\
+I_{out}&= - \frac{u}{ \tau_{out} }. \\
+\end{align*}
+
+
+The variable $u$ represents the voltage or transmembrane potential and $h$ is a gating variable. $I_{in}$ is the inward current and combines all the currents which rise the voltage across the cell membrane; $I_{out}$ combines the currents which decrease the membrane voltage. The stimulus current $I_{stim}$ is an external current that the experimenter applies in short pulses.
+
+\subsection{Some details abount the computational implementation of the model}
+
+The Heaviside function on the gate variable function $h$ can be replaced by a smooth function. This change helps when doing inference with Hamiltonian Monte Carlo\cite{Neal2011} in a plattform like Stan\cite{Stan2020}, since the state variables--the parameters--need to be continous. 
+
+\begin{align*}
+\frac{dh(t)}{dt}&= \frac{1-h}{\tau_{open}} \left[ 1-p \right]+ \frac{-h}{\tau_{close}} p\\
+\text{where} \quad
+p&=\frac{1}{2}\left( \tanh(k(u-u_{gate}))+1\right)\\ 
+\end{align*}
+
+The parameter $k$ which controls the steepness of the hyperbolic function--the jump's speed--can be fitted easily and $k=50$ gives a good approximation for the Heaviside function.
+
+Another important aspect of electrophysiological cardiac models like Mitchell-Sachaeffer is that when fitting synthetic or experimental data, two consecutive action potential profiles need to be fitted (after the system has reached state state), since alternans could be present. 
+
+Alternans is a phenomenon that occurs when applying a stimulus at a specif period or cycle length. Just as in real life, when a myocyte--an excitable cardiac cell--receives a sufficiently strong stimulus, the membrane potencial changes, which in turn causes a change in voltage which is graphically represented by an action potential (AP). After reaching steady state, the action potential duration (APD) between APs--the time that it takes for an action potental to depolirize and repolirize given a threshold--is constant for longer CLs, but if the pacing becomes faster, the APDs start alternating between long and short. This could be represented by a bifurcation plot, where APD is graphed against cycle length.  
+
+This implies that cardiac models need to be fitted, after the APs have reached steady state, considering more than one cycle length, selecting those close to the bifurcation point, either for cases where alternans are present and for cases they are not present.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[angle=0, width=1\textwidth]{alternans.png}
+	\caption{\label{alternans}Bifurcation plot of action potential duration as a function of pacing period from a zebrafish heart along with action potential profiles paced at 400 and 275 ms.}
+\end{figure}
+
+\section{Implementation in Stan}
+
+\subsection{Synthetic data creation}\label{synthetic}
+
+First, the correlated values for one of the parameters is generated. You need the package mmand from R
+
+```{r}
+
+library(mmand) #for a better graph of the grid
+set.seed(3)
+
+lsize<-5 # for a square lsize-by-lsize matrix  
+
+total<-seq(1,lsize^2)
+total
+table1<-expand.grid(seq(1,lsize),seq(1,lsize))
+table1
+table2<-cbind(total,table1)
+table2
+sampled<-seq(1,lsize^2,by=4) # training points (location)
+sampled
+notsampled<-total[-(sampled)] # points for prediction (location)
+notsampled
+table1[sampled,,]
+table1[notsampled,,]
+x<-rbind(table1[sampled,,],table1[notsampled,,])
+x
+dim(x)
+
+mufilter<-rnorm(lsize^2) # independent random numbers normally distributed for the grid
+sigmafilter<-10 # parameter for a Gaussian filter
+surface<-gaussianSmooth(mufilter,sigmafilter) # Gaussian filter applied to get correlated values
+
+# Tranforming the numbers for values of the parameter tauin that make sense for the model; for instance, they need to be positive
+surface=surface-min(surface)
+surface=0.2+2*surface
+surface=matrix(surface,lsize,lsize) # the numbers are finally stored in a matrix
+image((surface), useRaster=TRUE, axes=FALSE)
+surface
+
+theta1<-surface[sampled] # training points (values)
+theta1
+M1<-length(sampled) # number of training points 
+M2<-length(notsampled) # number of predicted points
+M=M1+M2
+
+```
+
+The synthetic data is generated in Stan. For the differential equation model, the system was solved using an adaptive forward Euler scheme, where a smaller step size was used for upstroke and a little bit after that and a bigger step size for the rest of the AP.
+
+```{stan output.var="dataforMSGP"}
+
+functions { # The Mitchell-Schaefer model; only the voltage variable is saved
+  real[] ms(real[] y0, 
+            real t0,
+            real[] Ts,
+            real[] theta,
+            real period,
+            int N){
+    real vsave[N];
+    real v = y0[1];
+    real h = y0[2];
+    real stimmag;
+    real p;
+    real dt;
+    real dt1=0.1;
+    real dt2=0.5;
+    
+    real auxt;
+    
+    for (ntime in 1:N){
+      auxt=fmod(Ts[ntime],period);
+      if(auxt>=0 && auxt<=4){
+        dt=dt1;
+        if(auxt>=0 && auxt<=1) # stimulus applied for 1 ms each CL
+          stimmag=0.66;
+        else
+          stimmag=0;
+      }
+      else{
+        dt=dt2;
+      }
+      p=0.5*(tanh(50*(v-theta[5]))+1);
+      h=h + ( (1-h)*(1-p)/theta[3] - h*p/theta[4])*dt;
+      v=v + (h*v^2*(1-v)/theta[1]-v/theta[2]+stimmag)*dt;
+      
+      vsave[ntime] = v;
+    }
+    return vsave;
+  }
+}
+data {
+  int<lower=1> T; # length of the vector of total time for the given CL (last 2 AP)  
+  int<lower=1> m; # population size
+  real y0[2]; # initial conditions
+  real t0; # time at which the initial conditions are given
+  real period; # CL for pacing
+  real theta[5,m]; # matrix of 5 rows (number of parameters) by m columns
+  int N; # length of the vector of total time for all the CLs (6 APs)
+  real Ts[N]; # vector of the times for each CL
+}
+model {
+}
+generated quantities {
+  real y_hat[N];
+  real y[T,m];
+  for (j in 1:m){
+    y_hat = ms(y0, t0, Ts, theta[,j], period, N);
+    for (t in 1:T)
+      y[t,j] = y_hat[T*2+t]; #just the last 2 APs (out of 6) are taken
+  }
+  for (j in 1:m){ # Random noise is added to the solution
+    for (t in 1:T)
+      y[t,j] += normal_rng(0, 0.03);
+  }
+}
+
+```
+
+Call from R to generate the synthetic data using Stan
+
+```{r}
+
+library(rstan)
+rstan_options (auto_write = TRUE)
+options (mc.cores = parallel::detectCores ())
+set.seed(1)
+
+# step sizes for the solution of the ODE system (MS)
+dt1<-0.1 # upstroke
+dt2<-0.5 # the rest of the AP
+
+periods<-c(350,300,276) # 1 CL for fitting with no alternans; 2 CLs with alternans
+nperiods<-length(periods)
+
+# To print the APs faster and separated, not linked 
+Yaux<-vector("list",nperiods) # 2 AP for each CL fine res
+Y<-vector("list",nperiods) # 2 AP for each CL coarse
+TS<-vector("list",nperiods) # 2 AP time for each CL
+Tode<-vector("list",nperiods) # 6 AP time for each CL
+Ts2<-{} # 6 AP time for all CL
+ts<-{}
+tsnr<-{}
+y<-{} # 2 AP for all CL
+nts<-rep(0,nperiods) # length of 2 AP for each CL
+ntsnr<-rep(0,nperiods) 
+indexes<-vector("list",nperiods)
+
+# Values taken from the MS paper
+thetatrue<-c(0.3,6,150,120,0.13)
+
+# A population of M1 perturbed vectors, based on the true values, is created
+# M1 is the number of training points
+sdev<-0.1*thetatrue
+Theta<-t(mapply(function(x1,x2){rnorm(M1,x1,x2)},x1=thetatrue,x2=sdev))
+Theta[1,]<-theta1
+Theta
+
+ptm<-proc.time()
+for (i in 1:nperiods){
+  # resolution to solve the ODE system
+  auxts1<-c(seq(dt1,4,by=dt1),seq(4+dt2,periods[i],by=dt2)) # time for first APs
+  auxts2<-periods[i]+auxts1 # time for second AP
+  auxts<-c(auxts1,auxts2) # time 2 (last) AP
+  
+  ts<-c(ts,auxts)
+  auxn<-length(auxts)
+  nts[i]<-auxn # size of the time vector for each CL
+  auxN<-3*auxn # size for 6 AP
+  
+  # resolution for fitting
+  newres1<-c(seq(0.1,4,by=0.5),seq(5,periods[i],by=10))
+  newres2<-periods[i]+newres1 # time for second AP
+  newres<-c(newres1,newres2)
+  indexes[[i]]<-match(newres,auxts)
+  
+  tsnr<-c(tsnr,newres)
+  auxnnr<-length(newres)
+  ntsnr[i]<-auxnnr
+  auxNnr<-3*auxnnr # size for 6 AP
+  
+  Ts<-{}
+  for (j in seq(0,4,by=2)){
+    Ts<-c(Ts,auxts+j*periods[i]) # 6 AP time for one CL
+  }
+  Tode[[i]]<-Ts
+  Ts2<-c(Ts2,Ts)
+  MS_data<-list(T = auxn, m=M1, y0 = c(0,1), t0 = 0, period=periods[i],
+                theta = Theta,Ts=Ts,N=auxN)
+  synpoints <- rstan::sampling(dataforMSGP,
+    data = MS_data,    # named list of data
+    chains = 1,             # number of Markov chains
+    iter = 1,            # total number of iterations per chain
+    algorithm = 'Fixed_param',
+    seed=0
+  )
+  Yaux[[i]]<-extract(synpoints, pars = "y")$y[1,,]
+  Y[[i]]<-Yaux[[i]][indexes[[i]],]
+  TS[[i]]<-newres
+}
+n<-sum(nts)
+NTs<-3*nts
+N<-3*n
+
+# new
+nnr<-sum(ntsnr)
+NTsnr<-3*ntsnr
+Nnr<-3*nnr
+nr<-{}
+for (i in 1:nperiods)
+  nr<-c(nr,indexes[[i]])
+
+print(proc.time()-ptm)
+
+# Link the last two APs for each CL one after the other to do inference
+yy<-{}
+for (i in 1:nperiods)
+  yy<-rbind(yy,Y[[i]])
+
+# Plot the AP profiles separated
+for (i in 1:nperiods){
+  plot(TS[[i]],Y[[i]][,1],type='l')  
+  for (j in 2:M1)
+    lines(TS[[i]],Y[[i]][,j])  
+}
+
+```
+
+\subsection{Inference}\label{inference}
+
+Except for $\tau_{in}$, the priors selected for each parameter of the MS model were selected as folded normals (meaning that the samples are taken as just the non-negative support of a normal distribution). The priors have mean equal to the true value and a standard deviation of 20% of the mean. 
+
+```{stan output.var="MS"}
+
+functions {
+  real[] ms(real[] y0, 
+            real t0,
+            real[] Ts,
+            real[] theta,
+            real period,
+            int N){
+    real vsave[N];
+    real v = y0[1];
+    real h = y0[2];
+    real stimmag=0;
+    real p;
+    real dt;
+    real dt1=0.1;
+    real dt2=0.5;
+    real auxt;
+    
+    for (ntime in 1:N){
+      auxt=fmod(Ts[ntime],period);
+      if(auxt>=0 && auxt<=4){
+        dt=dt1;
+        if(auxt>=0 && auxt<=1)
+          stimmag=0.66;
+        else
+          stimmag=0;
+      }
+      else{
+        dt=dt2;
+      }
+      p=0.5*(tanh(50*(v-theta[5]))+1);
+      h=h + ( (1-h)*(1-p)/theta[3] - h*p/theta[4])*dt;
+      v=v + (h*v^2*(1-v)/theta[1]-v/theta[2]+stimmag)*dt;
+      
+      vsave[ntime] = v;
+    }
+    return vsave;
+  }
+}
+data {
+  int<lower=1> nCL; # number of CL used 
+  int nts[nCL]; 
+  int<lower=1> T; # length of the vector of total time for all the CLs (last 2 AP)  
+  int<lower=1> M1; # number of data given
+  int<lower=1> M2; # number of data to predict
+  int<lower=1> M; # M=M1+M2
+  real y1[T,M1];
+  real y0[2];
+  real t0;
+  real periods[nCL]; 
+  int N; # length of the vector of total time for all the CLs (6 AP)
+  real Ts[N]; # vector of the times for each CL
+  int NTs[nCL];
+  int nr[T];
+  int ntsnr[nCL];
+  vector[2] x[M];
+  vector[M1] tauin1;
+}
+transformed data {
+  real delta = 1e-9;
+}
+parameters {
+  real<lower=0> sigma[M1]; # noise added to the solution
+  real<lower=0> mu[4]; 
+  real<lower=0> theta[4,M1];
+  
+  real<lower=0> rho;
+  real<lower=0> alpha;
+  real<lower=0> sigma_gp;
+  vector[M] eta;
+}
+transformed parameters {
+  vector[M] f;
+  {
+    matrix[M, M] L_K;
+    matrix[M, M] K = cov_exp_quad(x, alpha, rho);
+    
+    # diagonal elements
+    for (m in 1:M)
+      K[m, m] = K[m, m] + delta;
+    
+    L_K = cholesky_decompose(K);
+    f = 0.3+L_K * eta;
+  }
+}
+model {
+  real y1_hat[N,M1];
+  int aux;
+  int aux2;
+  real auxtheta[5];
+  aux=0;
+  for (i in 1:nCL){
+    for (j in 1:M1){
+      auxtheta[1]=tauin1[j];
+      auxtheta[2:5]=theta[,j];
+      y1_hat[ (aux+1):(aux+NTs[i]),j] = ms(y0, t0, Ts[(aux+1):(aux+NTs[i])], auxtheta, periods[i], NTs[i]);
+    }
+    aux=aux+NTs[i];
+  }
+  for (j in 1:M1){
+    aux=0; # for the last 2 AP
+    aux2=0;# for the total AP
+    for (i in 1:nCL){
+      for (t in 1:ntsnr[i])
+        y1[aux+t,j] ~ normal(y1_hat[(aux2+2*nts[i]+nr[t+aux]),j], sigma[j]);
+      aux=aux+ntsnr[i];
+      aux2=aux2+NTs[i]; 
+    }
+  }
+  sigma ~ normal(0,0.5);
+  rho ~ uniform(1,6);
+  alpha ~ std_normal();
+  sigma_gp ~ std_normal();
+  eta ~ std_normal();
+  mu[1] ~ normal(6,1.2);
+  mu[2] ~ normal(150,30);
+  mu[3] ~ normal(120,24);
+  mu[4] ~ normal(0.13,0.026);
+  tauin1 ~ normal(f[1:M1],sigma_gp);
+  theta[1] ~ normal(mu[1],1.2);
+  theta[2] ~ normal(mu[2],30);
+  theta[3] ~ normal(mu[3],24);
+  theta[4] ~ normal(mu[4],0.026);
+}
+generated quantities {
+  vector[M2] tauin2;
+  for (m2 in 1:M2)
+    tauin2[m2] = normal_rng(f[M1 + m2], sigma_gp);
+}
+
+```
+
+Call from R to perform inference using Stan:
+
+```{r}
+stan_data<-list(nCL = nperiods, nts=nts, T=nnr, M1=M1, M2=M2, M=M, y1=yy, y0 = c(0,1), t0 = 0, periods = periods ,
+                N=N ,Ts=Ts2, NTs=NTs, nr=nr, ntsnr=ntsnr, x=x, tauin1=theta1)
+
+ptm<-proc.time()
+fit <- rstan::sampling(MS,          
+  data = stan_data,    # named list of data
+  chains = 1,             # number of Markov chains
+  warmup = 1000,          # number of warmup iterations per chain
+  iter = 1500,            # total number of iterations per chain
+  cores = 1,              # number of cores (could use one per chain)
+  refresh = 75,             # progress shown
+  init=list(list(theta=matrix(rep(c(6,120,150,0.13),M1),4,M1))),
+  control=list(adapt_delta = 0.8)
+)
+print(proc.time()-ptm)
+
+# Table of results
+print(fit)
+
+# Histograms of the MS parameters except tau_in
+stan_hist(fit,pars='theta')
+
+# Histograms of the parameter in space (tau_in) at each predicted location
+stan_hist(fit,pars='tauin2')
+
+```
+
+\subsection{Results}
+
+Plotting of the results shown on the slides. The package lattice needs to be installed.
+
+```{r}
+# Table of results
+print(fit)
+
+# Histograms of the MS parameters except tau_in
+stan_hist(fit,pars='theta')
+
+# Histograms of the parameter in space (tau_in) at each predicted location
+stan_hist(fit,pars='tauin2')
+
+
+sol<-extract(fit, permuted = TRUE, inc_warmup = FALSE, include = TRUE)
+
+# Posterior means
+tauin2<-sol$tauin2
+meanstauin2<-{}
+
+# mean
+for (i in 1:M2){
+  meanstauin2[i]<-mean(tauin2[,i])
+}
+
+# variance for the bars of the correlation plot 
+vartauin2<-rep(0,M2)
+for (i in 1:M2){
+  vartauin2[i]<-var(tauin2[,i])
+}
+
+# Grid construction from the inference done, using predicted and non-predicted values
+sdtauin2<-sqrt(vartauin2)
+predsurface<-rep(0,M)
+j1<-1;
+j2<-1;
+for (i in 1:M){
+  if (i==sampled[j1] && j1<=M1){
+    predsurface[i]<-theta1[j1];
+    j1<-j1+1;
+  }
+  else{
+    if (i==notsampled[j2] && j2<=M2){
+      predsurface[i]<-meanstauin2[j2]
+      j2<-j2+1;
+    }
+  }
+}
+
+library(lattice)
+# Grid of the true values
+levelplot((surface),xlab="",ylab="")
+
+# Grid of the predicted values
+postsurface=matrix(predsurface,lsize,lsize)
+levelplot((postsurface),xlab="",ylab="")
+
+# Pearson correlation coefficient and correlation plot
+plot(surface[notsampled],meanstauin2,
+     ylim=range(c(meanstauin2-sdtauin2, meanstauin2+sdtauin2)),
+     pch=19, col='blue', xlab="True values", ylab="Predicted Values")
+arrows(surface[notsampled], meanstauin2-sdtauin2, surface[notsampled], meanstauin2+sdtauin2, length=0.05, angle=90, code=3)
+cor.test(surface[notsampled],meanstauin2)
+
+```
+
+\subsection{(Predicted) Action Potentials at one of the predicted locations}
+
+Call from R to call Stan and print the data at a different resolution from the one in the synthetic data.
+
+```{r}
+# Distribution of of all the parameters at the population level, except for tau_in
+mu4par<-sol$mu
+
+# Distributions for all the parameters, included tau_in at the location where the action potentials are going to be calculated 
+
+mu11<-cbind(tauin2[,11],mu4par)
+
+# To plot just 50 action potentials from the sample of size 500
+muestreo<-sample(seq(1,500),50,replace=F)
+
+pop<-mu11[muestreo,]
+mpop=length(muestreo)
+Ypop<-vector("list",nperiods) 
+
+ptm<-proc.time()
+for (i in 1:nperiods){
+  MSpop<-list(T = nts[i], m=mpop, y0 = c(0,1), t0 = 0, period=periods[i],
+              theta = t(pop),Ts=Tode[[i]],N=NTs[i])
+  poppoints <- rstan::sampling(dataforMSGP,
+    data = MSpop,    # named list of data
+    chains = 1,             # number of Markov chains
+    iter = 1,            # total number of iterations per chain
+    algorithm = 'Fixed_param',
+    seed=0
+  )
+  Ypop[[i]]<-extract(poppoints, pars = "y")$y[1,,]
+}
+timepop<-proc.time()-ptm
+print(timepop)
+
+for (i in 1:nperiods){
+  Ypop[[i]]<-rbind( Ypop[[i]][nts[i],],Ypop[[i]][1:(nts[i]-1),])
+  Ypop[[i]][,1]<-Ypop[[i]][,1]/max(Ypop[[i]][,1])
+  plot(c(0,Ypop[[i]][,1]),type='l',col='blue',xlab='time',ylab='voltage',ylim=c(0,1))
+  for (j in 2:mpop){
+    Ypop[[i]][,j]<-Ypop[[i]][,j]/max(Ypop[[i]][,j])
+    lines(c(0,Ypop[[i]][,j]),col = 'blue',xlab='time',ylab='voltage',ylim=c(0,1))
+  }
+}
+
+```
+\subsection{Comments}
+
+I suggest copying the programs separately and run the code using RStudio instead of running this script. I think it is faster.
+
+To not add more code, the population of predicted action potential profiles was generated with noise.
+
+To learn about Gaussian process simulation, fitting and prediction, you could read the Stan Manual sections 10.1-10.3. 
+
+\begin{thebibliography}{30}
+
+\bibitem{Mitchell2003} Mitchell, C. C., \& Schaeffer, D. G. (2003). A two-current model for the dynamics of cardiac membrane. Bulletin of mathematical biology, 65(5), 767-793.
+
+\bibitem {Neal2011} Neal, R. M. (2011) MCMC Using Hamiltonian Dynamics. In Brooks, S., Gelman, A., Jones, G., \& Meng, X. L. (Eds.). (2011). Handbook of Markov Chain Monte Carlo. CRC press.
+
+\bibitem{Stan2020} Stan Development Team (2020). Stan modeling language: \emph{User's guide and reference manual}. Version 2.23.
+
+\end{thebibliography}
+
