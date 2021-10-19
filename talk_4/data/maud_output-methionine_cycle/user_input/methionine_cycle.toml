@@ -1,0 +1,154 @@
+################ Kinetic model of Methionine Cycle ##########
+metabolites = [
+  {id="met-L", name="methionine", compartment="c", balanced=true},
+  {id="atp", name="adenosine triphosphate", compartment="c", balanced=false},
+  {id="pi", name="orthophosphate", compartment="c", balanced=false},
+  {id="ppi", name="pyrophosphate", compartment="c", balanced=false},
+  {id="amet", name="adenosyl methionine", compartment="c", balanced=true},
+  {id="mga", name="methyl acceptor", compartment="c", balanced=false},
+  {id="cmga", name="methyl donor", compartment="c", balanced=false},
+  {id="ahcys", name="adenosyl homocysteine", compartment="c", balanced=true},
+  {id="gly", name="glycine", compartment="c", balanced=false},
+  {id="sarcs", name="sacrosine", compartment="c", balanced=false},
+  {id="hcys-L", name="homocysteine", compartment="c", balanced=true},
+  {id="adn", name="adenosine", compartment="c", balanced=false},
+  {id="thf", name="tetrahydrofolate", compartment="c", balanced=false},
+  {id="5mthf", name="5-methyltetrahydrofolate", compartment="c", balanced=true},
+  {id="mlthf", name="5,10-methylenetetrahydrofolate", compartment="c", balanced=false},
+  {id="glyb", name="betaine", compartment="c", balanced=false},
+  {id="dmgly", name="dimethyl-glycine", compartment="c", balanced=false},
+  {id="ser-L", name="serine", compartment="c", balanced=false},
+  {id="nadp", name="nadp", compartment="c", balanced=false},
+  {id="nadph", name="nadph", compartment="c", balanced=false},
+  {id="cyst-L", name="cystathionine", compartment="c", balanced=false},
+]
+
+[[compartments]]
+id = "c"
+name = "compartment"
+volume = 1
+
+[[reactions]]
+id = "METAT"
+name = "Methionine adenosyltransferase"
+water_stoichiometry = -1
+stoichiometry = {met-L_c = -1, atp_c = -1, pi_c = 1, ppi_c = 1, amet_c = 1}
+mechanism = "irreversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "MAT1"
+name = "Methionine adenosyltransferase 1"
+gene = "mat1"
+[[reactions.enzymes]]
+id = "MAT3"
+name = "Methionine adenosyltransferase 3"
+gene = "mat3"
+subunits=2
+[[reactions.enzymes.modifiers]]
+modifier_type = 'allosteric_activator'
+mic_id = 'amet_c'
+
+[[reactions]]
+id = "METH"
+name = "Methylase"
+stoichiometry = {amet_c = -1, mga_c = -1, ahcys_c = 1, cmga_c = 1}
+mechanism = "reversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "METH_Gen"
+name = "Generic methylase"
+gene = "None"
+subunits=1
+[[reactions.enzymes.modifiers]]
+modifier_type = 'competitive_inhibitor'
+mic_id = '5mthf_c'
+
+
+[[reactions]]
+id = "GNMT"
+name = "Glycine N-methyltransferase"
+stoichiometry = {amet_c = -1, gly_c = -1, ahcys_c = 1, sarcs_c = 1}
+mechanism = "irreversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "GNMT1"
+name = "Glycine N-methyltransferase"
+subunits=4
+[[reactions.enzymes.modifiers]]
+modifier_type = 'allosteric_activator'
+mic_id = 'amet_c'
+[[reactions.enzymes.modifiers]]
+modifier_type = 'competitive_inhibitor'
+mic_id = 'ahcys_c'
+[[reactions.enzymes.modifiers]]
+modifier_type = 'allosteric_inhibitor'
+mic_id = 'mlthf_c'
+
+
+[[reactions]]
+id = "AHC"
+name = "S-adenosylhomocysteine hydrolase"
+water_stoichiometry = -1
+stoichiometry = {ahcys_c = -1, adn_c = 1, hcys-L_c = 1}
+mechanism = "reversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "AHC1"
+name = "S-adenosylhomocysteine hydrolase 1"
+
+[[reactions]]
+id = "MS"
+name = "Methionine Synthase"
+stoichiometry = {hcys-L_c = -1, 5mthf_c = -1, met-L_c = 1, thf_c = 1}
+mechanism = "reversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "MS1"
+name = "Methionine Synthase 1"
+
+
+[[reactions]]
+id = "BHMT"
+name = "Betaine-homocysteine methyltransferase"
+stoichiometry = {hcys-L_c = -1, glyb_c = -1, met-L_c = 1, dmgly_c = 1}
+mechanism = "reversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "BHMT1"
+name = "Betaine-homocysteine methyltransferase"
+
+
+[[reactions]]
+id = "CBS"
+name = "Cystathionine beta synthase"
+water_stoichiometry = 1
+stoichiometry = {hcys-L_c = -1, ser-L_c = -1, cyst-L_c = 1}
+mechanism = "reversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "CBS1"
+name = "Cystathionine beta synthase"
+subunits=2
+[[reactions.enzymes.modifiers]]
+modifier_type = 'allosteric_activator'
+mic_id = 'amet_c'
+
+[[reactions]]
+id = "MTHFR"
+name = "Methylenetetrahydrofolate reductase"
+# water_stoichiometry = 1
+stoichiometry = {mlthf_c = -1, nadph_c = -1, nadp_c = 1, 5mthf_c = 1}
+mechanism = "irreversible_modular_rate_law"
+[[reactions.enzymes]]
+id = "MTHFR1"
+name = "Methylenetetrahydrofolate reductase"
+subunits=2
+[[reactions.enzymes.modifiers]]
+modifier_type = 'allosteric_inhibitor'
+mic_id = 'amet_c'
+[[reactions.enzymes.modifiers]]
+modifier_type = 'allosteric_activator'
+mic_id = 'ahcys_c'
+
+[[drains]]
+id = "PROT"
+name = "Protein Synthesis"
+stoichiometry = {met-L_c = -1}
+
+[[drains]]
+id = "met-L_source"
+name = "methionine source"
+stoichiometry = { met-L_c = 1 }

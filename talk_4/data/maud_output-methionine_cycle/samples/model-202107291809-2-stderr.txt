@@ -1,0 +1,10 @@
+Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+Exception: Non-steady state in experiment 1 (in '/home/nicholas/Maud/src/maud/model.stan', line 410, column 6 to column 51)
+If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+
+Informational Message: The current Metropolis proposal is about to be rejected because of the following issue:
+Exception: Non-steady state in experiment 1 (in '/home/nicholas/Maud/src/maud/model.stan', line 410, column 6 to column 51)
+If this warning occurs sporadically, such as for highly constrained variable types like covariance matrices, then the sampler is fine,
+but if this warning occurs often then your model may be either severely ill-conditioned or misspecified.
+
