@@ -1,0 +1,30 @@
+name = "methionine_cycle"
+kinetic_model = "methionine_cycle.toml"
+priors = "priors.csv"
+experiments = "simulation_study.csv"
+user_inits_file= "generated_inits.csv"
+likelihood = true
+reject_non_steady = true
+
+[cmdstanpy_config]
+iter_warmup = 1000
+iter_sampling = 1000
+max_treedepth = 11
+chains = 4
+save_warmup = true
+refresh=1
+metric = "dense_e"
+adapt_delta=0.99
+
+[ode_config]
+rel_tol = 1e-4
+abs_tol = 1e-4
+rel_tol_forward = 1e-6
+abs_tol_forward = 1e-6
+rel_tol_backward = 1e-6
+abs_tol_backward = 1e-5
+rel_tol_quadrature = 1e-6
+abs_tol_quadrature = 1e-4
+max_num_steps = 1e9
+timepoint = 1e2
+

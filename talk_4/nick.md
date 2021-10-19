@@ -7,3 +7,11 @@ Our software automates network construction, and conducts parameter sampling in 
 Joint work with Teddy Groves.
 
 [Nicholas Cowie](https://orbit.dtu.dk/en/persons/nicholas-luke-cowie) is a PhD student at the Technical University of Denmark.
+
+## Relevant repositories
+* [Maud](https://github.com/biosustain/Maud)
+* [Maud_Demo](https://github.com/biosustain/maud_demo)
+
+
+Data used for joint plots see [here](data/samples)
+
