@@ -7,4 +7,6 @@ Our analysis addresses the problem of summarising the information in BRENDA abou
 
 Joint work with Areti Tsigkinopoulou
 
+You can follow this project at its [github repository](https://github.com/biosustain/brenda_km), where you can find instructions for reproducing our results and analysis and for running our web app locally.
+
 [Teddy Groves](https://www.linkedin.com/in/teddy-groves-9002b8117/?originalSubdomain=dk) is a postdoctoral researcher at the Technical Universtiy of Denmark.
